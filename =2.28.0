@@ -1,0 +1,4 @@
+Looking in indexes: https://pypi.tuna.tsinghua.edu.cn/simple
+Requirement already satisfied: imageio in /home/quyansong/miniconda3/envs/GaussianEditor/lib/python3.10/site-packages (2.36.0)
+Requirement already satisfied: numpy in /home/quyansong/miniconda3/envs/GaussianEditor/lib/python3.10/site-packages (from imageio) (2.0.1)
+Requirement already satisfied: pillow>=8.3.2 in /home/quyansong/miniconda3/envs/GaussianEditor/lib/python3.10/site-packages (from imageio) (10.4.0)
