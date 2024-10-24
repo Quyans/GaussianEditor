@@ -731,7 +731,9 @@ class WebUI:
                 if sam_output is not None:
                     render_pkg["sam_masks"].append(sam_output[0])
                     render_pkg["point2ds"].append(sam_output[1])
-                    # render_pkg["point2ds_neg"].append(sam_output[2])
+                    
+                    if len(self.points3d_neg) > 0:
+                        render_pkg["point2ds_neg"].append(sam_output[2])
 
         self.gaussian.localize = False  # reverse
 
@@ -1047,13 +1049,13 @@ class WebUI:
                     radius=5,
                 )
                 
-                # if len(output["point2ds_neg"])>0:
-                #     out_img = torchvision.utils.draw_keypoints(
-                #         out_img,
-                #         output["point2ds_neg"][0][None, ...],
-                #         colors="red",
-                #         radius=5,
-                #     )
+                if len(output["point2ds_neg"])>0:
+                    out_img = torchvision.utils.draw_keypoints(
+                        out_img,
+                        output["point2ds_neg"][0][None, ...],
+                        colors="red",
+                        radius=5,
+                    )
                     # out_img = torchvision.utils.draw_keypoints(
                     #     out_img,
                     #     output["point2ds"][0][None, ...],
