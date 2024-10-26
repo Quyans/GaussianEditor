@@ -102,6 +102,10 @@ class WebUI:
         self.seg_scale = True
         self.seg_scale_end = False
         # from original system
+        
+        self.tracing_point_start_3d = None
+        self.tracing_point_end_3d = None
+        
         self.points3d = []
         self.points3d_neg = []
         self.gaussian = GaussianModel(
@@ -159,6 +163,7 @@ class WebUI:
         self.server = viser.ViserServer(port=self.port)
         self.add_theme()
         self.draw_flag = True
+        self.point_tracing_draw_flag = True
         with self.server.add_gui_folder("Render Setting"):
             self.resolution_slider = self.server.add_gui_slider(
                 "Resolution", min=384, max=4096, step=2, initial_value=2048
@@ -183,6 +188,16 @@ class WebUI:
                 "Show Frame", initial_value=False
             )
 
+        with self.server.add_gui_folder("3D point Tracing"):
+            self.point_tracing_enabled = self.server.add_gui_checkbox(
+                "Enable Point Tracing",
+                initial_value=False,
+            )
+            self.add_tracing_point = self.server.add_gui_checkbox(
+                "Add Point",
+                initial_value=False,
+            )
+        
         with self.server.add_gui_folder("Semantic Tracing"):
             self.sam_enabled = self.server.add_gui_checkbox(
                 "Enable SAM",
@@ -251,6 +266,19 @@ class WebUI:
             )
             self.right_down = self.server.add_gui_vector2(
                 "Right Down",
+                initial_value=(0, 0),
+                step=1,
+                visible=False,
+            )
+            # 追踪的2d起始点
+            self.tracing_point_start_2d = self.server.add_gui_vector2(
+                "Point_Start",
+                initial_value=(0, 0),
+                step=1,
+                visible=False,
+            )
+            self.tracing_point_end_2d = self.server.add_gui_vector2(
+                "Point End",
                 initial_value=(0, 0),
                 step=1,
                 visible=False,
@@ -691,6 +719,7 @@ class WebUI:
         local=False,
         sam=False,
         train=False,
+        point_tracing=False,
     ) -> Dict[str, Any]:
         self.gaussian.localize = local
 
@@ -735,6 +764,16 @@ class WebUI:
                     if len(self.points3d_neg) > 0:
                         render_pkg["point2ds_neg"].append(sam_output[2])
 
+        render_pkg["point_tracing_start"] = None
+        render_pkg["point_tracing_end"] = None
+        if point_tracing:
+            if self.tracing_point_start_3d is not None:
+                tracing_point_start_2d = project(cam, self.tracing_point_start_3d) # shape [1,2]
+                render_pkg["point_tracing_start"] = tracing_point_start_2d
+                if self.tracing_point_end_3d is not None:
+                    tracing_point_end_2d = project(cam, self.tracing_point_end_3d)
+                    render_pkg["point_tracing_end"] = tracing_point_end_2d
+        
         self.gaussian.localize = False  # reverse
 
         render_pkg["semantic"] = semantic_map_viz[None]
@@ -847,6 +886,32 @@ class WebUI:
                 self.add_points3d(self.camera, click_pos)
 
             self.viwer_need_update = True
+        elif self.point_tracing_enabled.value and self.add_tracing_point.value:
+            assert hasattr(pointer, "click_pos"), "please install our forked viser"
+            click_pos = pointer.click_pos
+            click_pos = torch.tensor(click_pos)
+            cur_cam = self.camera
+            if self.point_tracing_draw_flag:
+                self.clear_point_tracing()
+                new_value = [
+                    int(cur_cam.image_width * click_pos[0]),
+                    int(cur_cam.image_height * click_pos[1]),
+                ]
+                self.tracing_point_start_2d.value = new_value
+                self.add_tracing_point3d(cur_cam, click_pos)
+                print("start point", new_value)
+                self.point_tracing_draw_flag = False
+            else:
+                new_value = [
+                    int(cur_cam.image_width * click_pos[0]),
+                    int(cur_cam.image_height * click_pos[1]),
+                ]
+                self.tracing_point_end_2d.value = new_value
+                self.add_tracing_point3d(cur_cam, click_pos)
+                print("end point", new_value)
+                self.point_tracing_draw_flag = True
+
+                    
         elif self.draw_bbox.value:
             assert hasattr(pointer, "click_pos"), "please install our forked viser"
             click_pos = pointer.click_pos
@@ -877,6 +942,12 @@ class WebUI:
     def clear_points3d(self):
         self.points3d = []
         self.points3d_neg = []
+    
+    def clear_point_tracing(self):
+        self.tracing_point_start_2d.value = [0, 0]
+        self.tracing_point_end_2d.value = [0, 0]
+        self.tracing_point_start_3d = None
+        self.tracing_point_end_3d = None
 
     def add_points3d(self, camera, points2d, update_mask=False):
         depth = render(camera, self.gaussian, self.pipe, self.background_tensor)[
@@ -895,7 +966,21 @@ class WebUI:
         self.points3d_neg += unprojected_points3d.unbind(0)
         if update_mask:
             self.update_sam_mask_with_point_prompt(self.points3d, self.points3d_neg)
-            
+    
+    def add_tracing_point3d(self, camera, points2d):
+        depth = render(camera, self.gaussian, self.pipe, self.background_tensor)[
+            "depth_3dgs"
+        ]
+        # 把depth中points2d位置的深度替换成位于2D起始点的深度
+        
+        if self.point_tracing_draw_flag:
+            unprojected_points3d = unproject(camera, points2d, depth)
+            self.tracing_point_start_3d = unprojected_points3d
+        else:
+            # use the same detph with start point
+            depth[0, int(points2d[1]*camera.image_height), int(points2d[0]*camera.image_width)] = depth[0, self.tracing_point_start_2d.value[1], self.tracing_point_start_2d.value[0]]
+            unprojected_points3d = unproject(camera, points2d, depth)
+            self.tracing_point_end_3d = unprojected_points3d
 
     # no longer needed since can be extracted from langsam
     # def sam_encode_all_view(self):
@@ -1035,6 +1120,7 @@ class WebUI:
             out_img = (out_img * 255).to(torch.uint8).cpu().to(torch.uint8)
             out_img = out_img.moveaxis(-1, 0)  # C H W
 
+
         if self.sam_enabled.value:
             if "sam_masks" in output and len(output["sam_masks"]) > 0:
                 # try:
@@ -1065,6 +1151,51 @@ class WebUI:
                 # except Exception as e:
                 #     print(e)
 
+        if (self.point_tracing_enabled.value
+        ):
+            tracing_start, tracing_end = output["point_tracing_start"], output["point_tracing_end"]
+            if tracing_start is not None:
+                if tracing_end is not None:
+                    dtype = out_img.dtype
+                    device = out_img.device
+                    
+                    # image = image.detach().cpu().permute(1,2,0).numpy()
+                    # # 渲染的是[0,1]
+                    # image = (image * 255).astype(np.uint8)
+                    # image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+                    # # image = np.ones((image.shape[1], image.shape[2], 3), dtype="uint8")
+                    
+                    # cv2.arrowedLine(image, (int(origin_2d[0]),int(origin_2d[1])),  (int(x_axis_2d[0]),int(x_axis_2d[1])), (0, 0, 255), 5)  # X 轴
+                    # cv2.arrowedLine(image, (int(origin_2d[0]),int(origin_2d[1])),  (int(y_axis_2d[0]),int(y_axis_2d[1])), (0, 255, 0), 5)  # Y 轴
+                    # cv2.arrowedLine(image, (int(origin_2d[0]),int(origin_2d[1])),  (int(z_axis_2d[0]),int(z_axis_2d[1])), (255, 0, 0), 5)  # Z 轴
+                    
+                    # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    # # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    # image = torch.from_numpy(image/255.0).permute(2, 0, 1).to(dtype).to(device)
+                    
+                    out_img_np =  out_img.cpu().permute(1,2,0).numpy()
+                    out_img_np = cv2.cvtColor(out_img_np, cv2.COLOR_RGB2BGR)
+
+                    out_img = cv2.arrowedLine(
+                        out_img_np,
+                        (int(tracing_start[0,0]), int(tracing_start[0,1])),
+                        (int(tracing_end[0,0]), int(tracing_end[0,1])),
+                        (255, 0, 0),
+                        2,)
+                    
+                    out_img = cv2.cvtColor(out_img, cv2.COLOR_BGR2RGB)
+                    out_img = torch.from_numpy(out_img).permute(2, 0, 1).to(dtype).to(device)
+                else:
+                    out_img = torchvision.utils.draw_keypoints(
+                        out_img,
+                        tracing_start[None, ...],
+                        colors="blue",
+                        radius=5,
+                    )
+            
+
+        
         if (
             self.draw_bbox.value
             and self.draw_flag
@@ -1091,7 +1222,7 @@ class WebUI:
         gs_camera = self.camera
         if gs_camera is None:
             return
-        output = self.render(gs_camera, sam=self.sam_enabled.value)
+        output = self.render(gs_camera, sam=self.sam_enabled.value, point_tracing=self.point_tracing_enabled.value)
 
         out = self.prepare_output_image(output)
         self.server.set_background_image(out, format="jpeg")
