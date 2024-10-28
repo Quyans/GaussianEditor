@@ -90,7 +90,7 @@ class WebUI:
     def __init__(self, cfg) -> None:
         self.gs_source = cfg.gs_source
         self.colmap_dir = cfg.colmap_dir
-        self.port = 8083
+        self.port = 8085
         # training cfg
 
         self.use_sam = False

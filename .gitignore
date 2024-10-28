@@ -200,7 +200,7 @@ cache/
 exp/
 !threestudio/data
 !threestudio/utils/wonder3D/mvdiffusion/data
-threestudio/
+# threestudio/
 tmp_add/
 __pycache__
 dataset/
