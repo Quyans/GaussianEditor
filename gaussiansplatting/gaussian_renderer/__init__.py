@@ -127,7 +127,7 @@ def render(
         colors_precomp = override_color
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen).
-    # import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()  在这里预设了所有高斯的颜色colors_precomp，将shs设置为None，用colors做渲染
     rendered_image, radii, depth = rasterizer(
         means3D=means3D.float(),
         means2D=means2D.float(),

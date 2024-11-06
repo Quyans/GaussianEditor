@@ -239,6 +239,7 @@ class WebUI:
                 visible=False,
             )
             self.submit_seg_prompt = self.server.add_gui_button("Tracing Begin!")
+            self.save_gaussian_mask = self.server.add_gui_button("Save Gaussian Mask!")
 
         with self.server.add_gui_folder("Edit Setting"):
             self.edit_type = self.server.add_gui_dropdown(
@@ -583,6 +584,10 @@ class WebUI:
                 self.semantic_groups.options += (text_prompt,)
             self.semantic_groups.value = text_prompt
 
+        @self.save_gaussian_mask.on_click
+        def _(_):
+            torch.save(self.gaussian.mask.detach().cpu(), "gaussian_mask.pt")
+        
         @self.semantic_groups.on_update
         def _(_):
             semantic_mask = self.semantic_gauassian_masks[self.semantic_groups.value]
@@ -997,6 +1002,7 @@ class WebUI:
         self, points3d=None, points3d_neg=None, save_mask=False, save_name="point_prompt_mask"
     ):
         points3d = points3d if points3d is not None else self.points3d
+        points3d_neg = points3d_neg if points3d_neg is not None else self.points3d_neg
         masks = []
         weights = torch.zeros_like(self.gaussian._opacity)
         weights_cnt = torch.zeros_like(self.gaussian._opacity, dtype=torch.int32)
@@ -1066,13 +1072,13 @@ class WebUI:
         self.seg_scale_end_button.visible = False
         self.mask_thres.visible = False
 
-        if save_mask:
-            for id, mask in enumerate(masks):
-                # mask = mask.cpu().numpy()[0, 0]
-                mask = mask.cpu().numpy()
-                img = Image.fromarray(mask)
-                os.makedirs("tmp",exist_ok=True)
-                img.save(f"./tmp/{save_name}-{id}.jpg")
+        # if save_mask:
+        #     for id, mask in enumerate(masks):
+        #         # mask = mask.cpu().numpy()[0, 0]
+        #         mask = mask.cpu().numpy()
+        #         img = Image.fromarray(mask)
+        #         os.makedirs("tmp",exist_ok=True)
+        #         img.save(f"./tmp/{save_name}-{id}.jpg")
 
         return masks, selected_mask
 
