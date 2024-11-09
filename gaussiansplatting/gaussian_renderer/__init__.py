@@ -49,6 +49,9 @@ def render(
     bg_color: torch.Tensor,
     scaling_modifier=1.0,
     override_color=None,
+    filter_switch=False,
+    filter_rectangle=None,
+    masks=None,
 ):
     """
     Render the scene.
@@ -126,6 +129,10 @@ def render(
     else:
         colors_precomp = override_color
 
+    # 如果想让某些高斯不显示，在这里利用mask取出来然后输入进去
+    # means3D,shs,opacities,scales,rotations, 渲染的时候switch设置为false， 只有投影的时候才设置为true
+    
+    
     # Rasterize visible Gaussians to image, obtain their radii (on screen).
     # import pdb; pdb.set_trace()  在这里预设了所有高斯的颜色colors_precomp，将shs设置为None，用colors做渲染
     rendered_image, radii, depth = rasterizer(
@@ -137,6 +144,9 @@ def render(
         scales=scales.float(),
         rotations=rotations.float(),
         cov3D_precomp=cov3D_precomp,
+        filter_switch=filter_switch,
+        filter_rectangle=filter_rectangle,
+        masks=masks,
     )
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
@@ -237,6 +247,7 @@ def point_cloud_render(
         scales=scales.float(),
         rotations=rotations.float(),
         cov3D_precomp=cov3D_precomp,
+        
     )
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
