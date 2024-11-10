@@ -51,7 +51,6 @@ def render(
     override_color=None,
     filter_switch=False,
     filter_rectangle=None,
-    masks=None,
 ):
     """
     Render the scene.
@@ -131,11 +130,27 @@ def render(
 
     # 如果想让某些高斯不显示，在这里利用mask取出来然后输入进去
     # means3D,shs,opacities,scales,rotations, 渲染的时候switch设置为false， 只有投影的时候才设置为true
+    # 如果想让某些高斯不显示，在这里利用mask取出来然后输入进去
+    mask = pc.mask
+    # if mask is not None:
+    #     if means3D is not None:
+    #         means3D = means3D[mask]
+    #     if shs is not None:
+    #         shs = shs[mask]
+    #     if opacity is not None:
+    #         opacity = opacity[mask]
+    #     if scales is not None:
+    #         scales = scales[mask]
+    #     if rotations is not None:
+    #         rotations = rotations[mask]
+    if mask is not None:
+        if opacity is not None:
+            opacity[~mask] = 0.0
     
     
     # Rasterize visible Gaussians to image, obtain their radii (on screen).
     # import pdb; pdb.set_trace()  在这里预设了所有高斯的颜色colors_precomp，将shs设置为None，用colors做渲染
-    rendered_image, radii, depth = rasterizer(
+    rendered_image, radii, depth, masks = rasterizer(
         means3D=means3D.float(),
         means2D=means2D.float(),
         shs=shs,
@@ -146,7 +161,6 @@ def render(
         cov3D_precomp=cov3D_precomp,
         filter_switch=filter_switch,
         filter_rectangle=filter_rectangle,
-        masks=masks,
     )
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
@@ -157,6 +171,7 @@ def render(
         "visibility_filter": radii > 0,
         "radii": radii,
         "depth_3dgs": depth,
+        "masks": masks,
     }
 
 
@@ -238,7 +253,7 @@ def point_cloud_render(
 
     # Rasterize visible Gaussians to image, obtain their radii (on screen).
     # import pdb; pdb.set_trace()
-    rendered_image, radii, depth = rasterizer(
+    rendered_image, radii, depth, masks = rasterizer(
         means3D=means3D.float(),
         means2D=means2D.float(),
         shs=shs,
@@ -247,7 +262,6 @@ def point_cloud_render(
         scales=scales.float(),
         rotations=rotations.float(),
         cov3D_precomp=cov3D_precomp,
-        
     )
 
     # Those Gaussians that were frustum culled or had a radius of 0 were not visible.
@@ -258,4 +272,5 @@ def point_cloud_render(
         "visibility_filter": radii > 0,
         "radii": radii,
         "depth_3dgs": depth,
+        "mask": masks,
     }

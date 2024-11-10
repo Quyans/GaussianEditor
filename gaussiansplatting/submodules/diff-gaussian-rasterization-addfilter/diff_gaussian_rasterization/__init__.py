@@ -35,7 +35,6 @@ def rasterize_gaussians(
     raster_settings,
     filter_switch,
     filter_rectangle,
-    masks,
 ):
     return _RasterizeGaussians.apply(
         means3D,
@@ -49,7 +48,6 @@ def rasterize_gaussians(
         raster_settings,
         filter_switch,
         filter_rectangle,
-        masks,
     )
 
 
@@ -68,7 +66,6 @@ class _RasterizeGaussians(torch.autograd.Function):
         raster_settings,
         filter_switch,
         filter_rectangle,
-        masks,
     ):
         # Restructure arguments the way that the C++ lib expects them
         args = (
@@ -92,7 +89,6 @@ class _RasterizeGaussians(torch.autograd.Function):
             raster_settings.prefiltered,
             filter_switch,
             filter_rectangle,
-            masks,
             raster_settings.debug,
         )
 
@@ -107,6 +103,7 @@ class _RasterizeGaussians(torch.autograd.Function):
                     color,
                     depth,
                     radii,
+                    masks,
                     geomBuffer,
                     binningBuffer,
                     imgBuffer,
@@ -123,6 +120,7 @@ class _RasterizeGaussians(torch.autograd.Function):
                 color,
                 depth,
                 radii,
+                masks,
                 geomBuffer,
                 binningBuffer,
                 imgBuffer,
@@ -143,7 +141,7 @@ class _RasterizeGaussians(torch.autograd.Function):
             binningBuffer,
             imgBuffer,
         )
-        return color, radii, depth
+        return color, radii, depth, masks
 
     @staticmethod
     def backward(ctx, grad_out_color, grad_radii, grad_depth):
@@ -279,7 +277,6 @@ class GaussianRasterizer(nn.Module):
         cov3D_precomp=None,
         filter_switch=False,
         filter_rectangle=None,
-        masks=None,
     ):
         raster_settings = self.raster_settings
 
@@ -309,10 +306,9 @@ class GaussianRasterizer(nn.Module):
         if cov3D_precomp is None:
             cov3D_precomp = torch.Tensor([]).to(torch.float32).to("cuda")
 
-        if not filter_switch:
+        if filter_rectangle is None:
             # 设置一个大值保证不过滤任何高思球
             filter_rectangle = torch.Tensor([0,0,self.raster_settings.image_width,self.raster_settings.image_height]).to(torch.float32).to("cuda")
-            masks = torch.Tensor([]).to(torch.float32).to("cuda")
 
         # Invoke C++/CUDA rasterization routine
         return rasterize_gaussians(
@@ -327,7 +323,6 @@ class GaussianRasterizer(nn.Module):
             raster_settings,
             filter_switch,
             filter_rectangle,
-            masks,
         )
 
     def apply_weights(

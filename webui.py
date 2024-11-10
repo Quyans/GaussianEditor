@@ -159,6 +159,8 @@ class WebUI:
         self.system_need_update = False
         self.inpaint_again = True
         self.scale_depth = True
+        
+        self.filter_gs_switch = False
 
         self.server = viser.ViserServer(port=self.port)
         self.add_theme()
@@ -183,6 +185,7 @@ class WebUI:
                 ],
             )
             self.save_button = self.server.add_gui_button("Save Gaussian")
+            self.save_gaussian_mask = self.server.add_gui_button("Save Gaussian Mask!")
 
             self.frame_show = self.server.add_gui_checkbox(
                 "Show Frame", initial_value=False
@@ -239,8 +242,18 @@ class WebUI:
                 visible=False,
             )
             self.submit_seg_prompt = self.server.add_gui_button("Tracing Begin!")
-            self.save_gaussian_mask = self.server.add_gui_button("Save Gaussian Mask!")
 
+        with self.server.add_gui_folder("Filter Setting"):
+            self.filter_enabled = self.server.add_gui_checkbox(
+                "Enable Filter",
+                initial_value=False,
+            )
+            self.draw_filter_bbox = self.server.add_gui_checkbox(
+                "Draw Filter Box", initial_value=False
+            )
+            self.filter_gs_bt = self.server.add_gui_button("Filter Now!")
+            self.filter_gs_reset = self.server.add_gui_button("Reset Filter!")
+        
         with self.server.add_gui_folder("Edit Setting"):
             self.edit_type = self.server.add_gui_dropdown(
                 "Edit Type", ("Edit", "Delete", "Add")
@@ -586,7 +599,18 @@ class WebUI:
 
         @self.save_gaussian_mask.on_click
         def _(_):
+            print("Saving Gaussian Mask!")
             torch.save(self.gaussian.mask.detach().cpu(), "gaussian_mask.pt")
+        
+        @self.filter_gs_bt.on_click
+        def _(_):
+            self.filter_gs_switch = True
+        
+        @self.filter_gs_reset.on_click
+        def _(_):
+            self.filter_gs_switch = False
+            masks = torch.ones_like(self.gaussian._opacity[:,0]).to(torch.bool)
+            self.gaussian.set_mask(masks)
         
         @self.semantic_groups.on_update
         def _(_):
@@ -725,16 +749,26 @@ class WebUI:
         sam=False,
         train=False,
         point_tracing=False,
+        filter_switch=False,
+        filter_gs_switch=False,
+        filter_rectangle=None,
     ) -> Dict[str, Any]:
         self.gaussian.localize = local
 
-        render_pkg = render(cam, self.gaussian, self.pipe, self.background_tensor)
-        image, viewspace_point_tensor, _, radii = (
+        render_pkg = render(cam, self.gaussian, self.pipe, self.background_tensor, filter_switch=filter_switch, filter_rectangle=filter_rectangle)
+        image, viewspace_point_tensor, _, radii, masks = (
             render_pkg["render"],
             render_pkg["viewspace_points"],
             render_pkg["visibility_filter"],
             render_pkg["radii"],
+            render_pkg["masks"],
         )
+        
+        masks=masks.to(torch.bool)
+        if filter_gs_switch:
+            masks = masks & self.gaussian.mask
+            self.gaussian.set_mask(masks)
+        
         if train:
             self.viewspace_point_tensor = viewspace_point_tensor
             self.radii = radii
@@ -916,7 +950,32 @@ class WebUI:
                 print("end point", new_value)
                 self.point_tracing_draw_flag = True
 
+        elif self.draw_filter_bbox.value:
+            assert hasattr(pointer, "click_pos"), "please install our forked viser"
+            click_pos = pointer.click_pos
+            click_pos = torch.tensor(click_pos)
+            cur_cam = self.camera
+            if self.draw_flag:
+                self.left_up.value = [
+                    int(cur_cam.image_width * click_pos[0]),
+                    int(cur_cam.image_height * click_pos[1]),
+                ]
+                self.draw_flag = False
+            else:
+                new_value = [
+                    int(cur_cam.image_width * click_pos[0]),
+                    int(cur_cam.image_height * click_pos[1]),
+                ]
+                if (self.left_up.value[0] < new_value[0]) and (
+                    self.left_up.value[1] < new_value[1]
+                ):
+                    self.right_down.value = new_value
+                    self.draw_flag = True
+                else:
+                    self.left_up.value = new_value
                     
+            
+                   
         elif self.draw_bbox.value:
             assert hasattr(pointer, "click_pos"), "please install our forked viser"
             click_pos = pointer.click_pos
@@ -1200,7 +1259,26 @@ class WebUI:
                         radius=5,
                     )
             
+        if (
+            self.draw_filter_bbox.value
+            and self.draw_flag
+            and (self.left_up.value[0] < self.right_down.value[0])
+            and (self.left_up.value[1] < self.right_down.value[1])
+        ):
+            # 获取目标区域的原始颜色
+            region = out_img[
+                :,
+                self.left_up.value[1] : self.right_down.value[1],
+                self.left_up.value[0] : self.right_down.value[0],
+            ]
 
+            # 将目标区域的颜色加上一些白色
+            # 这里假设白色增加的比例为0.2，可以根据需要调整
+            out_img[
+                :,
+                self.left_up.value[1] : self.right_down.value[1],
+                self.left_up.value[0] : self.right_down.value[0],
+            ] = region + 0.4 * (255 - region)
         
         if (
             self.draw_bbox.value
@@ -1228,7 +1306,24 @@ class WebUI:
         gs_camera = self.camera
         if gs_camera is None:
             return
-        output = self.render(gs_camera, sam=self.sam_enabled.value, point_tracing=self.point_tracing_enabled.value)
+        
+        filter_gs_switch = False
+        if self.filter_gs_switch:
+            # 过滤对应高斯
+            filter_gs_switch = True
+            self.filter_gs_switch = False
+            
+        filter_rectangle = None
+        if (
+            self.filter_enabled.value
+            and self.draw_filter_bbox.value
+            and self.draw_flag
+            and (self.left_up.value[0] < self.right_down.value[0])
+            and (self.left_up.value[1] < self.right_down.value[1])
+        ):
+            filter_rectangle = torch.tensor([self.left_up.value[0],self.left_up.value[1], self.right_down.value[0], self.right_down.value[1]]).to(torch.float32).to(get_device())
+        output = self.render(gs_camera, sam=self.sam_enabled.value, point_tracing=self.point_tracing_enabled.value,
+                             filter_switch=self.filter_enabled.value, filter_gs_switch=filter_gs_switch, filter_rectangle=filter_rectangle)
 
         out = self.prepare_output_image(output)
         self.server.set_background_image(out, format="jpeg")

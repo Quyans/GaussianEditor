@@ -241,14 +241,13 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	if(filter_switch)
 	{
-		if (inRectangle(point_image, filter_rectangle) && masks[idx]==1)
+		if (inRectangle(point_image, filter_rectangle))
 		{	
 			// 必须取交集
 			masks[idx] = 1;
 		}else
 		{
 			masks[idx] = 0;
-			return;
 		}
 	}
 	
