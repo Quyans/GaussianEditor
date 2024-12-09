@@ -90,7 +90,7 @@ class WebUI:
     def __init__(self, cfg) -> None:
         self.gs_source = cfg.gs_source
         self.colmap_dir = cfg.colmap_dir
-        self.port = 8085
+        self.port = 8086
         # training cfg
 
         self.use_sam = False
@@ -1259,12 +1259,7 @@ class WebUI:
                         radius=5,
                     )
             
-        if (
-            self.draw_filter_bbox.value
-            and self.draw_flag
-            and (self.left_up.value[0] < self.right_down.value[0])
-            and (self.left_up.value[1] < self.right_down.value[1])
-        ):
+        if self.draw_filter_bbox.value and self.draw_flag and (self.left_up.value[0] < self.right_down.value[0]) and (self.left_up.value[1] < self.right_down.value[1]):
             # 获取目标区域的原始颜色
             region = out_img[
                 :,
@@ -1274,23 +1269,24 @@ class WebUI:
 
             # 将目标区域的颜色加上一些白色
             # 这里假设白色增加的比例为0.2，可以根据需要调整
+            render_alpha = 0.6
             out_img[
                 :,
                 self.left_up.value[1] : self.right_down.value[1],
                 self.left_up.value[0] : self.right_down.value[0],
-            ] = region + 0.4 * (255 - region)
+            ] = render_alpha * region + (1 - render_alpha) * 255
         
-        if (
-            self.draw_bbox.value
-            and self.draw_flag
-            and (self.left_up.value[0] < self.right_down.value[0])
-            and (self.left_up.value[1] < self.right_down.value[1])
-        ):
-            out_img[
-                :,
-                self.left_up.value[1] : self.right_down.value[1],
-                self.left_up.value[0] : self.right_down.value[0],
-            ] = 0
+        # if (
+        #     self.draw_bbox.value
+        #     and self.draw_flag
+        #     and (self.left_up.value[0] < self.right_down.value[0])
+        #     and (self.left_up.value[1] < self.right_down.value[1])
+        # ):
+        #     out_img[
+        #         :,
+        #         self.left_up.value[1] : self.right_down.value[1],
+        #         self.left_up.value[0] : self.right_down.value[0],
+        #     ] = 0
 
         self.renderer_output.options = list(output.keys())
         return out_img.cpu().moveaxis(0, -1).numpy().astype(np.uint8)
